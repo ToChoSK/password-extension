@@ -170,11 +170,11 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   }
 
-  function showPasswordDetailView(passwordId) {
+  async function showPasswordDetailView(passwordId) {
     currentPasswordId = passwordId
 
     // Get password data
-    const passwordData = getPasswordById(passwordId)
+    const passwordData = await getPasswordById(passwordId)
     if (!passwordData) return
 
     // Clone the password detail template
@@ -312,7 +312,9 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast("Zmeny boli uložené")
   }
 
-  function loadSavedSites() {
+  // Upravím funkciu loadSavedSites(), aby zobrazila informačnú správu, keď nie sú uložené žiadne heslá
+
+  async function loadSavedSites() {
     const savedSitesContainer = document.querySelector(".saved-sites")
     if (!savedSitesContainer) return
 
@@ -320,10 +322,15 @@ document.addEventListener("DOMContentLoaded", () => {
     savedSitesContainer.innerHTML = ""
 
     // Get saved passwords
-    const passwords = getSavedPasswords()
+    const passwords = await getSavedPasswords()
 
     if (passwords.length === 0) {
-      savedSitesContainer.innerHTML = '<p class="empty-state">Nemáte uložené žiadne heslá</p>'
+      savedSitesContainer.innerHTML = `
+      <div class="empty-state">
+        <p>Nemáte uložené žiadne heslá</p>
+        <p class="empty-state-hint">Navštívte webové stránky s prihlasovacími formulármi a rozšírenie vám ponúkne možnosť uložiť vaše prihlasovacie údaje.</p>
+      </div>
+    `
       return
     }
 
@@ -334,7 +341,9 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   }
 
-  function loadFavoriteSites() {
+  // Upravím aj funkciu loadFavoriteSites(), aby zobrazila informačnú správu, keď nie sú uložené žiadne obľúbené heslá
+
+  async function loadFavoriteSites() {
     const savedSitesContainer = document.querySelector(".saved-sites")
     if (!savedSitesContainer) return
 
@@ -342,10 +351,15 @@ document.addEventListener("DOMContentLoaded", () => {
     savedSitesContainer.innerHTML = ""
 
     // Get favorite passwords
-    const passwords = getSavedPasswords().filter((p) => p.favorite)
+    const passwords = (await getSavedPasswords()).filter((p) => p.favorite)
 
     if (passwords.length === 0) {
-      savedSitesContainer.innerHTML = '<p class="empty-state">Nemáte žiadne obľúbené heslá</p>'
+      savedSitesContainer.innerHTML = `
+      <div class="empty-state">
+        <p>Nemáte žiadne obľúbené heslá</p>
+        <p class="empty-state-hint">Pridajte heslá medzi obľúbené kliknutím na ikonu hviezdičky pri detailoch hesla.</p>
+      </div>
+    `
       return
     }
 
@@ -356,7 +370,7 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   }
 
-  function filterSavedSites(searchTerm) {
+  async function filterSavedSites(searchTerm) {
     const savedSitesContainer = document.querySelector(".saved-sites")
     if (!savedSitesContainer) return
 
@@ -364,7 +378,7 @@ document.addEventListener("DOMContentLoaded", () => {
     savedSitesContainer.innerHTML = ""
 
     // Get saved passwords that match the search term
-    const passwords = getSavedPasswords().filter(
+    const passwords = (await getSavedPasswords()).filter(
       (p) =>
         p.name.toLowerCase().includes(searchTerm) ||
         p.username.toLowerCase().includes(searchTerm) ||
@@ -383,7 +397,9 @@ document.addEventListener("DOMContentLoaded", () => {
     })
   }
 
-  function filterSitesByCategory(category) {
+  // Upravím aj funkciu filterSitesByCategory(), aby zobrazila informačnú správu, keď nie sú uložené žiadne heslá v danej kategórii
+
+  async function filterSitesByCategory(category) {
     const savedSitesContainer = document.querySelector(".saved-sites")
     if (!savedSitesContainer) return
 
@@ -391,10 +407,26 @@ document.addEventListener("DOMContentLoaded", () => {
     savedSitesContainer.innerHTML = ""
 
     // Get saved passwords in the selected category
-    const passwords = getSavedPasswords().filter((p) => p.category === category)
+    const passwords = (await getSavedPasswords()).filter((p) => p.category === category)
 
     if (passwords.length === 0) {
-      savedSitesContainer.innerHTML = '<p class="empty-state">Žiadne heslá v tejto kategórii</p>'
+      const categoryNames = {
+        bank: "Banky",
+        social: "Sociálne siete",
+        work: "Práca",
+        family: "Rodina",
+        health: "Zdravie",
+        other: "Iné",
+      }
+
+      const categoryName = categoryNames[category] || category
+
+      savedSitesContainer.innerHTML = `
+      <div class="empty-state">
+        <p>Žiadne heslá v kategórii "${categoryName}"</p>
+        <p class="empty-state-hint">Navštívte webové stránky v tejto kategórii a rozšírenie vám ponúkne možnosť uložiť vaše prihlasovacie údaje.</p>
+      </div>
+    `
       return
     }
 
@@ -477,22 +509,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Data storage functions
   function getSavedPasswords() {
-    const passwords = localStorage.getItem("passwords")
-    return passwords ? JSON.parse(passwords) : getDemoPasswords()
+    return new Promise((resolve) => {
+      chrome.storage.local.get("passwords", (result) => {
+        resolve(result.passwords || [])
+      })
+    })
   }
 
-  function getPasswordById(id) {
-    const passwords = getSavedPasswords()
+  async function getPasswordById(id) {
+    const passwords = await getSavedPasswords()
     return passwords.find((p) => p.id === id)
   }
 
-  function updatePassword(id, data) {
-    const passwords = getSavedPasswords()
+  async function updatePassword(id, data) {
+    const passwords = await getSavedPasswords()
     const index = passwords.findIndex((p) => p.id === id)
 
     if (index !== -1) {
       passwords[index] = { ...passwords[index], ...data }
-      localStorage.setItem("passwords", JSON.stringify(passwords))
+      chrome.storage.local.set({ passwords })
     }
   }
 
@@ -500,46 +535,10 @@ document.addEventListener("DOMContentLoaded", () => {
     updatePassword(id, { favorite: isFavorite })
   }
 
-  function deletePassword(id) {
-    let passwords = getSavedPasswords()
+  async function deletePassword(id) {
+    let passwords = await getSavedPasswords()
     passwords = passwords.filter((p) => p.id !== id)
-    localStorage.setItem("passwords", JSON.stringify(passwords))
-  }
-
-  function getDemoPasswords() {
-    return [
-      {
-        id: "1",
-        name: "Facebook",
-        username: "a.novakova@gmail.com",
-        password: "Jazvec-Spánok-Skrytý0",
-        website: "facebook.com",
-        category: "social",
-        favorite: true,
-        folder: "Sociálne siete",
-      },
-      {
-        id: "2",
-        name: "Google",
-        username: "aaa@gmail.com",
-        password: "abcabc",
-        website: "google.com",
-        category: "social",
-        favorite: false,
-        folder: "Práca",
-        note: "I shared this with my son",
-      },
-      {
-        id: "3",
-        name: "Tatra Banka",
-        username: "novak.jan",
-        password: "Silne-Heslo-123",
-        website: "tatrabanka.sk",
-        category: "bank",
-        favorite: true,
-        folder: "Banky",
-      },
-    ]
+    chrome.storage.local.set({ passwords })
   }
 
   // Declare chrome variable if it's not already defined

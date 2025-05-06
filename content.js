@@ -1,225 +1,723 @@
-// Global variables
-let passwordFields = []
-let usernameFields = []
-let formFields = []
-const currentDomain = window.location.hostname
-let isRegistrationPage = false
-let isLoginPage = false
+// Safely access browser APIs
+const browser = window.chrome || window.browser || {}
 
-// Zmeniť inicializáciu z DOMContentLoaded na load, pretože Facebook dynamicky načítava obsah
-document.addEventListener("DOMContentLoaded", () => {
-  // Detect forms and fields
-  detectForms()
+// Debug mode - set to true to see detailed logs
+const DEBUG = true
 
-  // Check if this is a login or registration page
-  analyzePageType()
-
-  // Set up event listeners
-  setupEventListeners()
-
-  // Check if we have saved passwords for this domain
-  checkSavedPasswords()
-})
-
-// Nahradiť za:
-
-// Inicializácia - spustí sa ihneď a potom znova po načítaní stránky
-initializeExtension()
-
-// Spustí sa aj po načítaní stránky
-window.addEventListener("load", () => {
-  console.log("Window loaded, initializing extension")
-  setTimeout(initializeExtension, 500) // Pridané oneskorenie pre lepšiu kompatibilitu s Facebookom
-})
-
-// Hlavná inicializačná funkcia
-function initializeExtension() {
-  console.log("Initializing password manager extension")
-  // Detect forms and fields
-  detectForms()
-
-  // Check if this is a login or registration page
-  analyzePageType()
-
-  // Set up event listeners
-  setupEventListeners()
-
-  // Check if we have saved passwords for this domain
-  checkSavedPasswords()
+// Log function that only logs when debug is enabled
+function log(...args) {
+  if (DEBUG) {
+    console.log("[Password Manager]", ...args)
+  }
 }
 
-// Upraviť funkciu detectForms() pre lepšiu detekciu Facebook formulárov
+// Global state
+let state = {
+  formFields: [],
+  passwordFields: [],
+  usernameFields: [],
+  isLoginPage: false,
+  isRegistrationPage: false,
+  currentDomain: window.location.hostname,
+  passwordSuggestionShown: false,
+  credentialsOffered: false,
+  processingForms: false,
+}
 
+// Initialize immediately and after page load
+initializeExtension()
+
+// Add multiple initialization attempts with increasing delays
+window.addEventListener("load", () => {
+  log("Window loaded, scheduling multiple detection attempts")
+  setTimeout(initializeExtension, 500)
+  setTimeout(initializeExtension, 1500)
+  setTimeout(initializeExtension, 3000)
+})
+
+// Set up a continuous check for Facebook specifically
+if (isFacebookDomain()) {
+  log("Facebook domain detected, setting up continuous monitoring")
+  setInterval(checkFacebookLoginForm, 1000)
+}
+
+// Main initialization function
+function initializeExtension() {
+  if (state.processingForms) {
+    log("Already processing forms, skipping this initialization")
+    return
+  }
+
+  state.processingForms = true
+  log("Initializing password manager extension")
+
+  // Reset state but keep track of whether we've shown suggestions
+  const passwordSuggestionShown = state.passwordSuggestionShown
+  const credentialsOffered = state.credentialsOffered
+
+  state = {
+    formFields: [],
+    passwordFields: [],
+    usernameFields: [],
+    isLoginPage: false,
+    isRegistrationPage: false,
+    currentDomain: window.location.hostname,
+    passwordSuggestionShown: passwordSuggestionShown,
+    credentialsOffered: credentialsOffered,
+    processingForms: true,
+  }
+
+  // Detect forms and analyze page type
+  detectForms()
+  analyzePageType()
+
+  // Set up event listeners and check for saved passwords
+  if (state.formFields.length > 0) {
+    setupEventListeners()
+    checkSavedPasswords()
+  }
+
+  // Set up mutation observer to detect dynamically added forms
+  setupMutationObserver()
+
+  state.processingForms = false
+  log("Initialization complete", state)
+}
+
+// Special function to check for Facebook login form
+function checkFacebookLoginForm() {
+  if (state.credentialsOffered) {
+    log("Credentials already offered, skipping Facebook check")
+    return
+  }
+
+  log("Running special Facebook login form check")
+
+  // Rozšírené selektory pre Facebook login.php stránku
+  const emailSelectors = [
+    // Pôvodné selektory
+    'input[name="email"], input[id="email"], input[placeholder="Email or phone number"], input[placeholder="E-mail alebo telefónne číslo"]',
+    'input[data-testid="royal_email"]',
+    'input[aria-label="Email or phone number"]',
+    'input[aria-label="E-mail alebo telefónne číslo"]',
+
+    // Nové selektory špecifické pre login.php
+    'input.inputtext._55r1[name="email"]',
+    'input.inputtext._1kbt[name="email"]',
+    'input[tabindex="0"][name="email"]',
+    'input[autofocus="1"][name="email"]',
+    'input[autocomplete="username"][name="email"]',
+    'input.inputtext._55r1.inputtext._1kbt.inputtext._1kbt[name="email"]',
+  ]
+
+  const passwordSelectors = [
+    // Pôvodné selektory
+    'input[name="pass"], input[id="pass"], input[placeholder="Password"], input[placeholder="Heslo"]',
+    'input[data-testid="royal_pass"]',
+    'input[aria-label="Password"]',
+    'input[aria-label="Heslo"]',
+
+    // Nové selektory špecifické pre login.php
+    'input.inputtext._55r1[name="pass"]',
+    'input.inputtext._9npi[name="pass"]',
+    'input[tabindex="0"][name="pass"]',
+    'input[autocomplete="current-password"][name="pass"]',
+    'input.inputtext._55r1.inputtext._9npi.inputtext._9npi[name="pass"]',
+  ]
+
+  // Skúsiť nájsť email a heslo pomocou rôznych selektorov
+  let emailInput = null
+  let passwordInput = null
+
+  // Najprv skúsime priamo selektory pre login.php stránku
+  if (window.location.href.includes("login.php")) {
+    log("Detected login.php page, using specific selectors")
+
+    emailInput = document.querySelector('input.inputtext._55r1.inputtext._1kbt.inputtext._1kbt[name="email"]')
+    passwordInput = document.querySelector('input.inputtext._55r1.inputtext._9npi.inputtext._9npi[name="pass"]')
+
+    // Ak nenájdeme, skúsime základné selektory podľa name a id
+    if (!emailInput) emailInput = document.querySelector('input[name="email"]')
+    if (!passwordInput) passwordInput = document.querySelector('input[name="pass"]')
+  }
+
+  // Ak stále nemáme polia, skúsime všetky selektory
+  if (!emailInput || !passwordInput) {
+    for (const selector of emailSelectors) {
+      const elements = document.querySelectorAll(selector)
+      elements.forEach((element) => {
+        if (isEmailField(element) && !emailInput) {
+          emailInput = element
+          log("Found Facebook email field:", element)
+        }
+      })
+      if (emailInput) break
+    }
+
+    for (const selector of passwordSelectors) {
+      const elements = document.querySelectorAll(selector)
+      elements.forEach((element) => {
+        if (isPasswordField(element) && !passwordInput) {
+          passwordInput = element
+          log("Found Facebook password field:", element)
+        }
+      })
+      if (passwordInput) break
+    }
+  }
+
+  // Ak stále nemáme polia, skúsime nájsť akékoľvek vstupné polia
+  if (!emailInput || !passwordInput) {
+    const inputs = document.querySelectorAll("input")
+    inputs.forEach((input) => {
+      const type = input.getAttribute("type")
+      const name = input.getAttribute("name")
+
+      if (!emailInput && (name === "email" || type === "email" || type === "text")) {
+        emailInput = input
+        log("Found potential email field by general search:", input)
+      } else if (!passwordInput && (name === "pass" || type === "password")) {
+        passwordInput = input
+        log("Found potential password field by general search:", input)
+      }
+    })
+  }
+
+  if (emailInput && passwordInput) {
+    log("Facebook login form found in special check")
+
+    // Skontrolujeme, či tento formulár už nie je v našom zozname
+    const alreadyDetected = state.formFields.some(
+      (f) => f.passwordFields.includes(passwordInput) || (f.usernameField && f.usernameField === emailInput),
+    )
+
+    if (!alreadyDetected) {
+      const loginForm = findFormElement(emailInput, passwordInput)
+
+      state.formFields.push({
+        form: loginForm,
+        passwordFields: [passwordInput],
+        usernameField: emailInput,
+      })
+
+      state.passwordFields.push(passwordInput)
+      state.usernameFields.push(emailInput)
+      state.isLoginPage = true
+
+      // Nastavíme event listeners a skontrolujeme uložené heslá
+      setupEventListeners()
+      checkSavedPasswords()
+    }
+  }
+}
+
+// Helper function to find the form element containing the inputs
+function findFormElement(emailInput, passwordInput) {
+  // Try to find the closest form
+  const emailForm = emailInput.closest("form")
+  const passwordForm = passwordInput.closest("form")
+
+  if (emailForm && passwordForm && emailForm === passwordForm) {
+    return emailForm
+  }
+
+  if (emailForm) return emailForm
+  if (passwordForm) return passwordForm
+
+  // If no form is found, create a virtual form object
+  return {
+    addEventListener: (event, handler) => {
+      // Add event listeners to both inputs to catch submission
+      emailInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handler(e)
+      })
+      passwordInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handler(e)
+      })
+
+      // Find submit buttons near the inputs
+      const submitButtons = findNearbySubmitButtons(emailInput, passwordInput)
+      submitButtons.forEach((button) => {
+        button.addEventListener("click", handler)
+      })
+    },
+    querySelector: (selector) => {
+      // Simple implementation to support basic form queries
+      if (selector.includes('input[type="password"]')) return passwordInput
+      if (selector.includes('input[type="email"]') || selector.includes('input[name="email"]')) return emailInput
+      return null
+    },
+    querySelectorAll: (selector) => {
+      // Simple implementation to support basic form queries
+      const results = []
+      if (selector.includes('input[type="password"]')) results.push(passwordInput)
+      if (selector.includes('input[type="email"]') || selector.includes('input[name="email"]')) results.push(emailInput)
+      return results
+    },
+    submit: () => {
+      // Try to find and click a submit button
+      const submitButtons = findNearbySubmitButtons(emailInput, passwordInput)
+      if (submitButtons.length > 0) {
+        submitButtons[0].click()
+      } else {
+        // Simulate Enter key on password field as fallback
+        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+        passwordInput.dispatchEvent(event)
+      }
+    },
+  }
+}
+
+// Find submit buttons near the inputs
+function findNearbySubmitButtons(emailInput, passwordInput) {
+  const buttons = []
+
+  // Look for common submit button patterns
+  const submitSelectors = [
+    'button[type="submit"]',
+    'input[type="submit"]',
+    'button[name="login"]',
+    "button.login_form_login_button",
+    'button[data-testid="royal_login_button"]',
+    'button:contains("Log In")',
+    'button:contains("Sign In")',
+    'button:contains("Prihlásiť")',
+  ]
+
+  // Check for buttons in common parent elements
+  const parents = [
+    emailInput.parentElement,
+    emailInput.parentElement?.parentElement,
+    emailInput.parentElement?.parentElement?.parentElement,
+    passwordInput.parentElement,
+    passwordInput.parentElement?.parentElement,
+    passwordInput.parentElement?.parentElement?.parentElement,
+  ].filter(Boolean)
+
+  // Add document body as the final fallback
+  parents.push(document.body)
+
+  // Search for buttons in each parent
+  for (const parent of parents) {
+    for (const selector of submitSelectors) {
+      try {
+        const elements = parent.querySelectorAll(selector)
+        elements.forEach((el) => {
+          if (!buttons.includes(el) && isVisibleElement(el)) {
+            buttons.push(el)
+          }
+        })
+      } catch (e) {
+        // Some selectors might not be supported, ignore errors
+      }
+    }
+
+    // Also look for elements that look like buttons
+    const potentialButtons = parent.querySelectorAll('button, input[type="button"], a.button, div[role="button"]')
+    potentialButtons.forEach((el) => {
+      if (
+        !buttons.includes(el) &&
+        isVisibleElement(el) &&
+        (el.textContent?.toLowerCase().includes("log in") ||
+          el.textContent?.toLowerCase().includes("sign in") ||
+          el.textContent?.toLowerCase().includes("prihlásiť"))
+      ) {
+        buttons.push(el)
+      }
+    })
+  }
+
+  return buttons
+}
+
+// Check if an element is visible
+function isVisibleElement(element) {
+  if (!element) return false
+
+  const style = window.getComputedStyle(element)
+  return (
+    style.display !== "none" &&
+    style.visibility !== "hidden" &&
+    style.opacity !== "0" &&
+    element.offsetWidth > 0 &&
+    element.offsetHeight > 0
+  )
+}
+
+// Detect forms on the page
 function detectForms() {
-  console.log("Detecting forms on page:", window.location.href)
+  log("Detecting forms on page:", window.location.href)
 
-  // Vyčistíme existujúce polia
-  formFields = []
-  passwordFields = []
-  usernameFields = []
-
-  // Špeciálna detekcia pre Facebook
-  if (window.location.hostname.includes("facebook.com")) {
-    console.log("Facebook detected, using specialized form detection")
+  // Special handling for Facebook
+  if (isFacebookDomain()) {
+    log("Facebook detected, using specialized form detection")
     detectFacebookForms()
     return
   }
 
-  // Štandardná detekcia pre ostatné stránky
+  // Standard form detection for other sites
   const forms = document.querySelectorAll("form")
-  console.log("Found forms:", forms.length)
+  log("Found forms:", forms.length)
 
   forms.forEach((form) => {
-    // Find password fields
     const passwordInputs = form.querySelectorAll('input[type="password"]')
-
     if (passwordInputs.length > 0) {
-      formFields.push({
+      const formData = {
         form: form,
         passwordFields: Array.from(passwordInputs),
         usernameField: findUsernameField(form, passwordInputs[0]),
-      })
+      }
 
-      // Add to global arrays
-      passwordFields = [...passwordFields, ...Array.from(passwordInputs)]
-      if (formFields[formFields.length - 1].usernameField) {
-        usernameFields.push(formFields[formFields.length - 1].usernameField)
+      state.formFields.push(formData)
+      state.passwordFields = [...state.passwordFields, ...Array.from(passwordInputs)]
+
+      if (formData.usernameField) {
+        state.usernameFields.push(formData.usernameField)
       }
     }
   })
 
   // If no forms with password fields were found, look for standalone password fields
-  if (formFields.length === 0) {
+  if (state.formFields.length === 0) {
     const standalonePasswordFields = document.querySelectorAll('input[type="password"]')
-    console.log("Found standalone password fields:", standalonePasswordFields.length)
+    log("Found standalone password fields:", standalonePasswordFields.length)
 
     standalonePasswordFields.forEach((passwordField) => {
       const usernameField = findNearbyUsernameField(passwordField)
-
-      formFields.push({
-        form: passwordField.closest("form") || null,
+      const formData = {
+        form: passwordField.closest("form") || createVirtualForm(passwordField, usernameField),
         passwordFields: [passwordField],
         usernameField: usernameField,
-      })
+      }
 
-      passwordFields.push(passwordField)
+      state.formFields.push(formData)
+      state.passwordFields.push(passwordField)
+
       if (usernameField) {
-        usernameFields.push(usernameField)
+        state.usernameFields.push(usernameField)
       }
     })
   }
 
-  console.log("Detected form fields:", formFields.length)
-  console.log("Detected password fields:", passwordFields.length)
+  log("Detected form fields:", state.formFields.length)
+  log("Detected password fields:", state.passwordFields.length)
 }
 
-// Pridať novú funkciu pre detekciu Facebook formulárov
+// Create a virtual form for standalone fields
+function createVirtualForm(passwordField, usernameField) {
+  return {
+    addEventListener: (event, handler) => {
+      // Add event listeners to inputs to catch submission
+      passwordField.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handler(e)
+      })
+
+      if (usernameField) {
+        usernameField.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") handler(e)
+        })
+      }
+
+      // Find submit buttons near the inputs
+      const submitButtons = findNearbySubmitButtons(usernameField || passwordField, passwordField)
+      submitButtons.forEach((button) => {
+        button.addEventListener("click", handler)
+      })
+    },
+    querySelector: (selector) => {
+      // Simple implementation to support basic form queries
+      if (selector.includes('input[type="password"]')) return passwordField
+      if (usernameField && (selector.includes('input[type="email"]') || selector.includes('input[name="email"]')))
+        return usernameField
+      return null
+    },
+    querySelectorAll: (selector) => {
+      // Simple implementation to support basic form queries
+      const results = []
+      if (selector.includes('input[type="password"]')) results.push(passwordField)
+      if (usernameField && (selector.includes('input[type="email"]') || selector.includes('input[name="email"]')))
+        return usernameField
+      return results
+    },
+    submit: () => {
+      // Try to find and click a submit button
+      const submitButtons = findNearbySubmitButtons(usernameField || passwordField, passwordField)
+      if (submitButtons.length > 0) {
+        submitButtons[0].click()
+      } else {
+        // Simulate Enter key on password field as fallback
+        const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+        passwordField.dispatchEvent(event)
+      }
+    },
+  }
+}
+
+// Specialized detection for Facebook forms
 function detectFacebookForms() {
-  console.log("Detecting Facebook forms")
+  log("Detecting Facebook forms")
 
-  // Facebook login - presné selektory podľa poskytnutého HTML
-  const emailInput = document.querySelector(
-    'input[name="email"], input[id="email"], input.inputtext[aria-label="Email address or phone number"]',
-  )
-  const passwordInput = document.querySelector(
-    'input[name="pass"], input[id="pass"], input.inputtext[aria-label="Password"]',
-  )
+  // Try multiple selector combinations to find login fields
+  const emailSelectors = [
+    'input[name="email"]',
+    'input[id="email"]',
+    'input.inputtext[name="email"]',
+    'input[data-testid="royal_email"]',
+    'input[aria-label="Email or phone number"]',
+    'input[aria-label="E-mail alebo telefónne číslo"]',
+    'input[placeholder="Email or phone number"]',
+    'input[placeholder="E-mail alebo telefónne číslo"]',
+    'input.inputtext._55r1[name="email"]',
+    'input.inputtext._1kbt[name="email"]',
+  ]
 
-  // Facebook registrácia
-  const registrationPasswordInput = document.querySelector(
-    'input[name="reg_passwd__"], input[id="password_step_input"], input[data-type="password"][autocomplete="new-password"]',
-  )
+  const passwordSelectors = [
+    'input[name="pass"]',
+    'input[id="pass"]',
+    'input.inputtext[name="pass"]',
+    'input[data-testid="royal_pass"]',
+    'input[aria-label="Password"]',
+    'input[aria-label="Heslo"]',
+    'input[placeholder="Password"]',
+    'input[placeholder="Heslo"]',
+    'input.inputtext._55r1[type="password"]',
+    'input.inputtext._9npi[name="pass"]',
+  ]
 
-  console.log("Facebook form elements:", {
-    emailInput: emailInput ? "found" : "not found",
-    passwordInput: passwordInput ? "found" : "not found",
-    registrationPasswordInput: registrationPasswordInput ? "found" : "not found",
+  // Try each combination of selectors
+  let emailInput = null
+  let passwordInput = null
+
+  // First try to find both fields with the same selector pattern
+  for (let i = 0; i < emailSelectors.length && !emailInput; i++) {
+    emailInput = document.querySelector(emailSelectors[i])
+    if (emailInput && i < passwordSelectors.length) {
+      passwordInput = document.querySelector(passwordSelectors[i])
+    }
+  }
+
+  // If that didn't work, try all combinations
+  if (!emailInput || !passwordInput) {
+    emailInput = null
+    passwordInput = null
+
+    for (const emailSelector of emailSelectors) {
+      const email = document.querySelector(emailSelector)
+      if (email) {
+        for (const passwordSelector of passwordSelectors) {
+          const password = document.querySelector(passwordSelector)
+          if (password) {
+            emailInput = email
+            passwordInput = password
+            break
+          }
+        }
+        if (emailInput && passwordInput) break
+      }
+    }
+  }
+
+  // Last resort: find any input that looks like email and password
+  if (!emailInput || !passwordInput) {
+    const inputs = document.querySelectorAll("input")
+    inputs.forEach((input) => {
+      if (isEmailField(input) && !emailInput) {
+        emailInput = input
+      } else if (isPasswordField(input) && !passwordInput) {
+        passwordInput = input
+      }
+    })
+  }
+
+  // Log what we found
+  log("Facebook form elements:", {
+    emailInput: emailInput ? truncateHTML(emailInput.outerHTML) : "not found",
+    passwordInput: passwordInput ? truncateHTML(passwordInput.outerHTML) : "not found",
   })
 
-  // Prihlasovací formulár
+  // If we found both fields, add them to our form fields
   if (emailInput && passwordInput) {
-    const loginForm = emailInput.closest("form") || passwordInput.closest("form") || document.querySelector("form")
+    const loginForm = findFormElement(emailInput, passwordInput)
 
-    formFields.push({
+    state.formFields.push({
       form: loginForm,
       passwordFields: [passwordInput],
       usernameField: emailInput,
     })
 
-    passwordFields.push(passwordInput)
-    usernameFields.push(emailInput)
+    state.passwordFields.push(passwordInput)
+    state.usernameFields.push(emailInput)
+    state.isLoginPage = true
 
-    console.log("Facebook login form detected")
+    log("Facebook login form detected")
   }
 
-  // Registračný formulár
+  // Also check for registration form
+  const registrationPasswordInput = document.querySelector(
+    'input[name="reg_passwd__"], input[id="password_step_input"], input[data-type="password"][autocomplete="new-password"], input.inputtext[data-type="password"]',
+  )
+
   if (registrationPasswordInput) {
     const regForm = registrationPasswordInput.closest("form") || document.querySelector("form")
-    const firstNameInput = document.querySelector('input[name="firstname"]')
-    const lastNameInput = document.querySelector('input[name="lastname"]')
     const emailRegInput = document.querySelector('input[name="reg_email__"]')
+    const firstNameInput = document.querySelector('input[name="firstname"]')
 
-    formFields.push({
+    state.formFields.push({
       form: regForm,
       passwordFields: [registrationPasswordInput],
       usernameField: emailRegInput || firstNameInput,
     })
 
-    passwordFields.push(registrationPasswordInput)
-    if (emailRegInput) usernameFields.push(emailRegInput)
+    state.passwordFields.push(registrationPasswordInput)
 
-    console.log("Facebook registration form detected")
+    if (emailRegInput) state.usernameFields.push(emailRegInput)
+    else if (firstNameInput) state.usernameFields.push(firstNameInput)
+
+    state.isRegistrationPage = true
+    log("Facebook registration form detected")
   }
 }
 
-// Try to find the username field associated with a password field
+// Helper to truncate HTML for logging
+function truncateHTML(html, maxLength = 100) {
+  if (!html) return "null"
+  if (html.length <= maxLength) return html
+  return html.substring(0, maxLength) + "..."
+}
+
+// Check if an input is likely an email field
+function isEmailField(input) {
+  if (!input) return false
+
+  // Check various attributes that suggest this is an email field
+  const type = input.getAttribute("type")
+  const name = input.getAttribute("name")
+  const id = input.getAttribute("id")
+  const placeholder = input.getAttribute("placeholder")
+  const ariaLabel = input.getAttribute("aria-label")
+  const autocomplete = input.getAttribute("autocomplete")
+
+  return (
+    type === "email" ||
+    name === "email" ||
+    (name && name.includes("email")) ||
+    id === "email" ||
+    (id && id.includes("email")) ||
+    (placeholder &&
+      (placeholder.toLowerCase().includes("email") ||
+        placeholder.toLowerCase().includes("e-mail") ||
+        placeholder.toLowerCase().includes("phone"))) ||
+    (ariaLabel &&
+      (ariaLabel.toLowerCase().includes("email") ||
+        ariaLabel.toLowerCase().includes("e-mail") ||
+        ariaLabel.toLowerCase().includes("phone"))) ||
+    autocomplete === "username" ||
+    autocomplete === "email"
+  )
+}
+
+// Check if an input is likely a password field
+function isPasswordField(input) {
+  if (!input) return false
+
+  // Check various attributes that suggest this is a password field
+  const type = input.getAttribute("type")
+  const name = input.getAttribute("name")
+  const id = input.getAttribute("id")
+  const placeholder = input.getAttribute("placeholder")
+  const ariaLabel = input.getAttribute("aria-label")
+  const autocomplete = input.getAttribute("autocomplete")
+
+  return (
+    type === "password" ||
+    name === "pass" ||
+    name === "password" ||
+    (name && name.includes("password")) ||
+    id === "pass" ||
+    id === "password" ||
+    (id && id.includes("password")) ||
+    (placeholder && placeholder.toLowerCase().includes("password")) ||
+    (placeholder && placeholder.toLowerCase().includes("heslo")) ||
+    (ariaLabel && ariaLabel.toLowerCase().includes("password")) ||
+    (ariaLabel && ariaLabel.toLowerCase().includes("heslo")) ||
+    autocomplete === "current-password" ||
+    autocomplete === "new-password"
+  )
+}
+
+// Find username field in a form
 function findUsernameField(form, passwordField) {
-  // Look for common username field types
+  // Common username field selectors
   const usernameSelectors = [
     'input[type="email"]',
     'input[name="email"]',
-    'input[id*="email"]',
-    'input[name*="email"]',
+    'input[id="email"]',
+    'input[autocomplete="username"]',
+    'input[autocomplete="email"]',
+    'input[placeholder*="email" i]',
+    'input[placeholder*="e-mail" i]',
+    'input[placeholder*="username" i]',
+    'input[aria-label*="email" i]',
+    'input[aria-label*="e-mail" i]',
+    'input[aria-label*="username" i]',
     'input[name="username"]',
-    'input[id*="username"]',
-    'input[name*="username"]',
-    'input[name="user"]',
-    'input[id*="user"]',
+    'input[id="username"]',
     'input[name*="user"]',
+    'input[id*="user"]',
     'input[type="text"]',
   ]
 
+  // Try each selector
   for (const selector of usernameSelectors) {
-    const fields = form.querySelectorAll(selector)
-    if (fields.length > 0) {
-      // Prefer fields that come before the password field
-      for (const field of fields) {
-        if (field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
-          return field
+    try {
+      const fields = form.querySelectorAll(selector)
+      if (fields.length > 0) {
+        // Prefer fields that come before the password field
+        for (const field of fields) {
+          if (passwordField && field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return field
+          }
         }
+        // If no field comes before the password, take the first one
+        return fields[0]
       }
-      // If no field comes before the password, take the first one
-      return fields[0]
+    } catch (e) {
+      // Some selectors might not be supported, ignore errors
+    }
+  }
+
+  // If no username field found with selectors, look for any visible text input
+  const textInputs = form.querySelectorAll('input[type="text"]')
+  for (const input of textInputs) {
+    if (isVisibleElement(input)) {
+      return input
     }
   }
 
   return null
 }
 
-// Find a username field near a standalone password field
+// Find username field near a standalone password field
 function findNearbyUsernameField(passwordField) {
+  if (!passwordField) return null
+
   // Look for input fields that are siblings or nearby
   const usernameSelectors = [
     'input[type="email"]',
     'input[name="email"]',
-    'input[id*="email"]',
-    'input[name*="email"]',
+    'input[id="email"]',
+    'input[autocomplete="username"]',
+    'input[autocomplete="email"]',
+    'input[placeholder*="email" i]',
+    'input[placeholder*="e-mail" i]',
+    'input[placeholder*="username" i]',
+    'input[aria-label*="email" i]',
+    'input[aria-label*="e-mail" i]',
+    'input[aria-label*="username" i]',
     'input[name="username"]',
-    'input[id*="username"]',
-    'input[name*="username"]',
-    'input[name="user"]',
-    'input[id*="user"]',
+    'input[id="username"]',
     'input[name*="user"]',
+    'input[id*="user"]',
     'input[type="text"]',
   ]
 
@@ -227,17 +725,22 @@ function findNearbyUsernameField(passwordField) {
   const parent = passwordField.parentElement
   if (!parent) return null
 
+  // Try each selector on the parent
   for (const selector of usernameSelectors) {
-    const fields = parent.querySelectorAll(selector)
-    if (fields.length > 0) {
-      // Prefer fields that come before the password field
-      for (const field of fields) {
-        if (field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
-          return field
+    try {
+      const fields = parent.querySelectorAll(selector)
+      if (fields.length > 0) {
+        // Prefer fields that come before the password field
+        for (const field of fields) {
+          if (field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return field
+          }
         }
+        // If no field comes before the password, take the first one
+        return fields[0]
       }
-      // If no field comes before the password, take the first one
-      return fields[0]
+    } catch (e) {
+      // Some selectors might not be supported, ignore errors
     }
   }
 
@@ -245,18 +748,49 @@ function findNearbyUsernameField(passwordField) {
   const grandparent = parent.parentElement
   if (!grandparent) return null
 
+  // Try each selector on the grandparent
   for (const selector of usernameSelectors) {
-    const fields = grandparent.querySelectorAll(selector)
-    if (fields.length > 0) {
-      // Prefer fields that come before the password field
-      for (const field of fields) {
-        if (field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
-          return field
+    try {
+      const fields = grandparent.querySelectorAll(selector)
+      if (fields.length > 0) {
+        // Prefer fields that come before the password field
+        for (const field of fields) {
+          if (field.compareDocumentPosition(passwordField) & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return field
+          }
         }
+        // If no field comes before the password, take the first one
+        return fields[0]
       }
-      // If no field comes before the password, take the first one
-      return fields[0]
+    } catch (e) {
+      // Some selectors might not be supported, ignore errors
     }
+  }
+
+  // Last resort: find any visible text input in the document that's near the password field
+  const allInputs = document.querySelectorAll('input[type="text"], input[type="email"]')
+  let closestInput = null
+  let closestDistance = Number.POSITIVE_INFINITY
+
+  const passwordRect = passwordField.getBoundingClientRect()
+
+  for (const input of allInputs) {
+    if (input !== passwordField && isVisibleElement(input)) {
+      const inputRect = input.getBoundingClientRect()
+      const distance = Math.sqrt(
+        Math.pow(inputRect.left - passwordRect.left, 2) + Math.pow(inputRect.top - passwordRect.top, 2),
+      )
+
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestInput = input
+      }
+    }
+  }
+
+  // Only return if it's reasonably close (within 300px)
+  if (closestDistance < 300) {
+    return closestInput
   }
 
   return null
@@ -264,19 +798,19 @@ function findNearbyUsernameField(passwordField) {
 
 // Analyze if the page is likely a login or registration page
 function analyzePageType() {
-  console.log("Analyzing page type for:", window.location.href)
+  log("Analyzing page type for:", window.location.href)
 
   // Reset page type
-  isRegistrationPage = false
-  isLoginPage = false
+  state.isRegistrationPage = false
+  state.isLoginPage = false
 
-  // Špeciálna detekcia pre Facebook
-  if (window.location.hostname.includes("facebook.com")) {
+  // Special detection for Facebook
+  if (isFacebookDomain()) {
     analyzeFacebookPageType()
     return
   }
 
-  // Štandardná detekcia pre ostatné stránky
+  // Standard detection for other sites
   const url = window.location.href.toLowerCase()
   const urlIndicators = {
     registration: ["register", "signup", "sign-up", "join", "create-account", "registration", "r.php"],
@@ -286,108 +820,120 @@ function analyzePageType() {
   // Check URL for indicators
   for (const indicator of urlIndicators.registration) {
     if (url.includes(indicator)) {
-      isRegistrationPage = true
-      console.log("Registration page detected via URL:", indicator)
+      state.isRegistrationPage = true
+      log("Registration page detected via URL:", indicator)
       break
     }
   }
 
   for (const indicator of urlIndicators.login) {
     if (url.includes(indicator)) {
-      isLoginPage = true
-      console.log("Login page detected via URL:", indicator)
+      state.isLoginPage = true
+      log("Login page detected via URL:", indicator)
       break
     }
   }
 
   // If URL analysis is inconclusive, check page content
-  if (!isRegistrationPage && !isLoginPage) {
+  if (!state.isRegistrationPage && !state.isLoginPage) {
     // Check for registration indicators in the page
     const registrationTexts = ["register", "sign up", "create account", "join now", "vytvoriť účet"]
     const pageText = document.body.innerText.toLowerCase()
 
     for (const text of registrationTexts) {
       if (pageText.includes(text)) {
-        isRegistrationPage = true
-        console.log("Registration page detected via text:", text)
+        state.isRegistrationPage = true
+        log("Registration page detected via text:", text)
         break
       }
     }
 
     // Check for multiple password fields (common in registration forms)
-    if (passwordFields.length >= 2) {
-      isRegistrationPage = true
-      console.log("Registration page detected via multiple password fields")
+    if (state.passwordFields.length >= 2) {
+      state.isRegistrationPage = true
+      log("Registration page detected via multiple password fields")
     }
 
     // Check for login indicators
     const loginTexts = ["log in", "sign in", "login", "prihlásiť", "prihlásenie"]
     for (const text of loginTexts) {
       if (pageText.includes(text)) {
-        isLoginPage = true
-        console.log("Login page detected via text:", text)
+        state.isLoginPage = true
+        log("Login page detected via text:", text)
         break
       }
     }
   }
 
-  console.log("Page type analysis result:", { isLoginPage, isRegistrationPage })
+  log("Page type analysis result:", { isLoginPage: state.isLoginPage, isRegistrationPage: state.isRegistrationPage })
 }
 
-// Pridať novú funkciu pre detekciu typu stránky na Facebooku
+// Specialized analysis for Facebook pages
 function analyzeFacebookPageType() {
   const url = window.location.href.toLowerCase()
 
-  // Detekcia podľa URL
+  // Kontrola, či sme na prihlasovacej stránke Facebooku
+  if (
+    url === "https://www.facebook.com/" ||
+    url === "https://www.facebook.com/?_rdr" ||
+    url === "https://m.facebook.com/" ||
+    url === "https://m.facebook.com/?_rdr" ||
+    url.match(/^https?:\/\/(www|m)\.facebook\.com\/?(\?.*)?$/) ||
+    url.includes("facebook.com/login") ||
+    url.includes("login.php") ||
+    url.includes("en-gb.facebook.com/login")
+  ) {
+    state.isLoginPage = true
+    log("Facebook login page detected via URL")
+    return
+  }
+
+  // Kontrola registračných stránok
   if (url.includes("facebook.com/r.php") || url.includes("facebook.com/reg/")) {
-    isRegistrationPage = true
-    console.log("Facebook registration page detected via URL")
+    state.isRegistrationPage = true
+    log("Facebook registration page detected via URL")
     return
   }
 
-  if (url.includes("facebook.com/login") || url.includes("login.php")) {
-    isLoginPage = true
-    console.log("Facebook login page detected via URL")
-    return
-  }
-
-  // Detekcia podľa titulku stránky
+  // Kontrola titulku stránky
   const pageTitle = document.title.toLowerCase()
   if (pageTitle.includes("sign up") || pageTitle.includes("create account") || pageTitle.includes("register")) {
-    isRegistrationPage = true
-    console.log("Facebook registration page detected via title")
+    state.isRegistrationPage = true
+    log("Facebook registration page detected via title")
     return
   }
 
-  if (pageTitle.includes("log in") || pageTitle.includes("login")) {
-    isLoginPage = true
-    console.log("Facebook login page detected via title")
+  if (pageTitle.includes("log in") || pageTitle.includes("login") || pageTitle.includes("prihlásenie")) {
+    state.isLoginPage = true
+    log("Facebook login page detected via title")
     return
   }
 
-  // Detekcia podľa formulárových prvkov
+  // Kontrola formulárových prvkov
   const registrationPasswordInput = document.querySelector(
-    'input[name="reg_passwd__"], input[id="password_step_input"]',
+    'input[name="reg_passwd__"], input[id="password_step_input"], input[data-type="password"][autocomplete="new-password"]',
   )
+
   if (registrationPasswordInput) {
-    isRegistrationPage = true
-    console.log("Facebook registration page detected via form elements")
+    state.isRegistrationPage = true
+    log("Facebook registration page detected via form elements")
     return
   }
 
   const loginPasswordInput = document.querySelector('input[name="pass"], input[id="pass"]')
   const loginButton = document.querySelector('button[name="login"], button[id="loginbutton"]')
-  if (loginPasswordInput && loginButton) {
-    isLoginPage = true
-    console.log("Facebook login page detected via form elements")
+
+  if (loginPasswordInput) {
+    state.isLoginPage = true
+    log("Facebook login page detected via form elements")
     return
   }
 
-  // Ak sa nepodarilo detekovať, skúsime podľa textu na stránke
+  // Kontrola textu na stránke
   const pageText = document.body.innerText.toLowerCase()
   if (pageText.includes("create a new account") || pageText.includes("sign up for facebook")) {
-    isRegistrationPage = true
-    console.log("Facebook registration page detected via page text")
+    state.isRegistrationPage = true
+    log("Facebook registration page detected via page text")
     return
   }
 
@@ -395,107 +941,112 @@ function analyzeFacebookPageType() {
     pageText.includes("log in to facebook") ||
     (pageText.includes("email or phone") && pageText.includes("password"))
   ) {
-    isLoginPage = true
-    console.log("Facebook login page detected via page text")
+    state.isLoginPage = true
+    log("Facebook login page detected via page text")
     return
   }
 
-  console.log("Could not determine Facebook page type, defaulting to login page")
-  isLoginPage = true // Predvolene považujeme stránku za prihlasovaciu
+  log("Could not determine Facebook page type, defaulting to login page")
+  state.isLoginPage = true // Predvolene považujeme stránku za prihlasovaciu
 }
 
 // Set up event listeners for the detected fields
 function setupEventListeners() {
-  console.log("Setting up event listeners")
+  log("Setting up event listeners")
 
   // Listen for password field focus to show suggestions
-  passwordFields.forEach((field) => {
-    field.removeEventListener("focus", handlePasswordFieldFocus) // Odstránime existujúci listener
+  state.passwordFields.forEach((field) => {
+    field.removeEventListener("focus", handlePasswordFieldFocus) // Remove existing listener
     field.addEventListener("focus", handlePasswordFieldFocus)
-    console.log("Added focus listener to password field", field)
+    log("Added focus listener to password field")
   })
 
   // Listen for form submissions to capture credentials
-  formFields.forEach((formData) => {
+  state.formFields.forEach((formData) => {
     if (formData.form) {
-      formData.form.removeEventListener("submit", handleFormSubmitWrapper) // Odstránime existujúci listener
+      formData.form.removeEventListener("submit", handleFormSubmitWrapper) // Remove existing listener
       formData.form.addEventListener("submit", handleFormSubmitWrapper)
-      console.log("Added submit listener to form", formData.form)
+      log("Added submit listener to form")
     }
   })
 
-  // Špeciálna podpora pre Facebook
-  if (window.location.hostname.includes("facebook.com")) {
+  // Add listeners to all submit buttons in the document
+  const submitButtons = document.querySelectorAll('button[type="submit"], input[type="submit"]')
+  submitButtons.forEach((button) => {
+    button.removeEventListener("click", handleButtonClickWrapper)
+    button.addEventListener("click", handleButtonClickWrapper)
+    log("Added click listener to submit button")
+  })
+
+  // Special support for Facebook
+  if (isFacebookDomain()) {
     setupFacebookEventListeners()
   }
-
-  // Pridáme mutation observer pre detekciu dynamických zmien v DOM
-  setupMutationObserver()
 }
 
-// Wrapper pre handleFormSubmit, aby sme mohli odstrániť listener
+// Wrapper for handleFormSubmit to allow removing the listener
 function handleFormSubmitWrapper(e) {
-  const formData = formFields.find((f) => f.form === e.currentTarget)
+  const formData = state.formFields.find((f) => f.form === e.currentTarget)
   if (formData) {
     handleFormSubmit(e, formData)
   }
 }
 
-// Špeciálna funkcia pre nastavenie event listenerov na Facebooku
+// Set up Facebook-specific event listeners
 function setupFacebookEventListeners() {
-  console.log("Setting up Facebook-specific event listeners")
+  log("Setting up Facebook-specific event listeners")
 
-  // Prihlasovací formulár - tlačidlo Login
-  const loginButton = document.querySelector('button[name="login"], button[id="loginbutton"], button[type="submit"]')
-  if (loginButton && formFields.length > 0) {
-    loginButton.removeEventListener("click", handleFacebookLoginClick)
-    loginButton.addEventListener("click", handleFacebookLoginClick)
-    console.log("Added click listener to Facebook login button", loginButton)
-  }
+  // Login button
+  const loginButtons = document.querySelectorAll(
+    'button[name="login"], button[id="loginbutton"], button[type="submit"], button[data-testid="royal_login_button"]',
+  )
 
-  // Registračný formulár - tlačidlo Sign Up
-  const signupButton = document.querySelector('button[name="websubmit"], button[type="submit"]')
-  if (signupButton && isRegistrationPage && formFields.length > 0) {
-    signupButton.removeEventListener("click", handleFacebookSignupClick)
-    signupButton.addEventListener("click", handleFacebookSignupClick)
-    console.log("Added click listener to Facebook signup button", signupButton)
-  }
+  loginButtons.forEach((button) => {
+    if (isVisibleElement(button)) {
+      button.removeEventListener("click", handleFacebookLoginClick)
+      button.addEventListener("click", handleFacebookLoginClick)
+      log("Added click listener to Facebook login button")
+    }
+  })
 
-  // Pridáme listenery na zmenu hodnoty polí
-  const emailInputs = document.querySelectorAll('input[name="email"], input[id="email"], input[name="reg_email__"]')
+  // Email input change event
+  const emailInputs = document.querySelectorAll(
+    'input[name="email"], input[id="email"], input[data-testid="royal_email"]',
+  )
+
   emailInputs.forEach((input) => {
     input.removeEventListener("change", checkSavedPasswordsForEmail)
     input.addEventListener("change", checkSavedPasswordsForEmail)
-    console.log("Added change listener to email input", input)
+    log("Added change listener to email input")
   })
 }
 
-// Handler pre kliknutie na prihlasovacie tlačidlo Facebooku
+// Handle Facebook login button click
 function handleFacebookLoginClick(e) {
-  console.log("Facebook login button clicked")
-  if (formFields.length > 0) {
-    handleFormSubmit(e, formFields[0])
+  log("Facebook login button clicked")
+
+  if (state.formFields.length > 0) {
+    // Find the form associated with this button
+    const button = e.currentTarget
+    const nearestForm = button.closest("form")
+
+    // Try to find the form that contains this button
+    const formData = state.formFields.find((f) => f.form === nearestForm) || state.formFields[0]
+
+    handleFormSubmit(e, formData)
   }
 }
 
-// Handler pre kliknutie na registračné tlačidlo Facebooku
-function handleFacebookSignupClick(e) {
-  console.log("Facebook signup button clicked")
-  if (formFields.length > 0) {
-    handleFormSubmit(e, formFields[0])
-  }
-}
-
-// Kontrola uložených hesiel po zmene emailu
+// Check saved passwords when email changes
 function checkSavedPasswordsForEmail(e) {
   const email = e.target.value
   if (email && email.length > 0) {
-    console.log("Email changed, checking saved passwords for:", email)
+    log("Email changed, checking saved passwords for:", email)
     checkSavedPasswords()
   }
 }
 
-// Nastavenie mutation observera pre sledovanie zmien v DOM
+// Set up mutation observer to detect dynamic form changes
 function setupMutationObserver() {
   // Odstránime existujúci observer
   if (window.passwordManagerObserver) {
@@ -510,12 +1061,17 @@ function setupMutationObserver() {
       if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType === Node.ELEMENT_NODE) {
+            // Kontrola, či pridaný uzol je alebo obsahuje formulárový prvok alebo pole pre heslo
             if (
               node.tagName === "FORM" ||
               node.querySelector("form") ||
               node.querySelector('input[type="password"]') ||
+              node.querySelector('input[data-type="password"]') ||
               node.querySelector('input[name="email"]') ||
-              node.querySelector('input[name="pass"]')
+              node.querySelector('input[name="pass"]') ||
+              node.querySelector("input.inputtext._55r1") ||
+              node.querySelector("input.inputtext._1kbt") ||
+              node.querySelector("input.inputtext._9npi")
             ) {
               shouldRedetect = true
               break
@@ -526,7 +1082,7 @@ function setupMutationObserver() {
     })
 
     if (shouldRedetect) {
-      console.log("DOM changed, re-detecting forms")
+      log("DOM changed, re-detecting forms")
       setTimeout(initializeExtension, 500)
     }
   })
@@ -537,46 +1093,96 @@ function setupMutationObserver() {
     subtree: true,
   })
 
-  console.log("Mutation observer set up")
+  log("Mutation observer set up")
+
+  // Pridáme aj interval pre pravidelné kontroly
+  if (!window.formDetectionInterval) {
+    window.formDetectionInterval = setInterval(() => {
+      // Kontrola, či existuje heslo, ktoré sme ešte nezaregistrovali
+      const passwordInputs = document.querySelectorAll('input[type="password"], input[data-type="password"]')
+      let newPasswordFound = false
+
+      passwordInputs.forEach((input) => {
+        if (!state.passwordFields.includes(input)) {
+          newPasswordFound = true
+        }
+      })
+
+      // Špeciálna kontrola pre Facebook login.php stránku
+      if (window.location.href.includes("login.php") && !state.credentialsOffered) {
+        const emailInput = document.querySelector('input.inputtext._55r1.inputtext._1kbt.inputtext._1kbt[name="email"]')
+        const passwordInput = document.querySelector(
+          'input.inputtext._55r1.inputtext._9npi.inputtext._9npi[name="pass"]',
+        )
+
+        if (
+          emailInput &&
+          passwordInput &&
+          !state.formFields.some((f) => f.usernameField === emailInput && f.passwordFields.includes(passwordInput))
+        ) {
+          log("Found Facebook login.php form in interval check")
+          newPasswordFound = true
+        }
+      }
+
+      if (newPasswordFound) {
+        log("New password field found by interval check")
+        initializeExtension()
+      }
+
+      // Špeciálna kontrola pre Facebook
+      if (isFacebookDomain() && !state.credentialsOffered) {
+        checkFacebookLoginForm()
+      }
+    }, 1000) // Kontrola každú sekundu
+  }
 }
 
 // Handle password field focus
 function handlePasswordFieldFocus(event) {
   const passwordField = event.target
 
-  console.log("Password field focused", {
-    isRegistrationPage,
+  log("Password field focused", {
+    isRegistrationPage: state.isRegistrationPage,
     url: window.location.href,
-    field: passwordField,
   })
 
-  // If this is a registration page, show password suggestion
+  // Skip if password already filled or suggestion already shown
+  if (passwordField.value || state.passwordSuggestionShown) {
+    log("Password already filled or suggestion already shown, skipping")
+    return
+  }
+
+  // Show password suggestion for registration pages
   if (
-    isRegistrationPage ||
-    (window.location.hostname.includes("facebook.com") && window.location.href.includes("r.php"))
+    state.isRegistrationPage ||
+    (isFacebookDomain() && (window.location.href.includes("r.php") || window.location.href.includes("reg/")))
   ) {
-    console.log("Showing password suggestion for registration")
+    log("Showing password suggestion for registration")
     showPasswordSuggestion(passwordField)
   }
 }
 
 // Show password suggestion UI
 function showPasswordSuggestion(passwordField) {
-  console.log("Showing password suggestion for field:", passwordField)
+  log("Showing password suggestion for field")
 
-  // Odstránime existujúce návrhy
+  // Mark that suggestion has been shown
+  state.passwordSuggestionShown = true
+
+  // Remove existing suggestions
   const existingSuggestions = document.querySelectorAll(".password-suggestion")
   existingSuggestions.forEach((el) => el.remove())
 
-  // Generate a secure password
-  const securePassword = generateSecurePassword()
+  // Use a fixed password
+  const securePassword = "test-heslo-123"
 
   // Create suggestion UI
   const suggestionElement = document.createElement("div")
   suggestionElement.className = "password-suggestion"
 
-  // Špeciálny štýl pre Facebook
-  if (window.location.hostname.includes("facebook.com")) {
+  // Special styling for Facebook
+  if (isFacebookDomain()) {
     suggestionElement.style.zIndex = "9999"
     suggestionElement.style.backgroundColor = "#fff"
     suggestionElement.style.border = "1px solid #dddfe2"
@@ -605,32 +1211,32 @@ function showPasswordSuggestion(passwordField) {
 
   // Add to the page
   document.body.appendChild(suggestionElement)
-  console.log("Password suggestion element added to page")
+  log("Password suggestion element added to page")
 
   // Add event listener to the "Use" button
   const useButton = suggestionElement.querySelector(".password-suggestion-btn")
   useButton.addEventListener("click", () => {
-    console.log("Password suggestion accepted")
+    log("Password suggestion accepted")
 
     // Fill the password field
     passwordField.value = securePassword
 
-    // Trigger input event to notify Facebook o zmene
+    // Trigger input event
     const inputEvent = new Event("input", { bubbles: true })
     passwordField.dispatchEvent(inputEvent)
 
-    // Ak sme na Facebooku, musíme použiť špeciálnu logiku
-    if (window.location.hostname.includes("facebook.com")) {
-      // Pre Facebook registráciu
+    // Special logic for Facebook
+    if (isFacebookDomain()) {
+      // For Facebook registration
       const confirmPasswordField = document.querySelector('input[name="reg_passwd_confirmation"]')
       if (confirmPasswordField) {
         confirmPasswordField.value = securePassword
         confirmPasswordField.dispatchEvent(new Event("input", { bubbles: true }))
       }
     } else {
-      // Štandardná logika pre ostatné stránky
+      // Standard logic for other sites
       // If there's a second password field (confirm password), fill that too
-      const formData = formFields.find((f) => f.passwordFields.includes(passwordField))
+      const formData = state.formFields.find((f) => f.passwordFields.includes(passwordField))
       if (formData && formData.passwordFields.length > 1) {
         formData.passwordFields.forEach((field) => {
           if (field !== passwordField) {
@@ -643,147 +1249,74 @@ function showPasswordSuggestion(passwordField) {
 
     // Remove the suggestion UI
     document.body.removeChild(suggestionElement)
-
-    // Uložíme heslo pre budúce použitie
   })
 
   // Remove the suggestion when clicking outside
   document.addEventListener("click", function removeSuggestion(e) {
     if (!suggestionElement.contains(e.target) && e.target !== passwordField) {
-      document.body.removeChild(suggestionElement)
+      // Check if element still exists in DOM
+      if (suggestionElement.parentNode) {
+        document.body.removeChild(suggestionElement)
+      }
       document.removeEventListener("click", removeSuggestion)
     }
   })
 }
 
-// Generate a secure password
-function generateSecurePassword() {
-  const adjectives = [
-    "Veselý",
-    "Smutný",
-    "Rýchly",
-    "Pomalý",
-    "Veľký",
-    "Malý",
-    "Silný",
-    "Slabý",
-    "Múdry",
-    "Hlúpy",
-    "Pekný",
-    "Škaredý",
-    "Dobrý",
-    "Zlý",
-    "Nový",
-    "Starý",
-    "Teplý",
-    "Studený",
-    "Tvrdý",
-    "Mäkký",
-    "Jazvec",
-    "Líška",
-    "Medveď",
-    "Vlk",
-    "Tiger",
-    "Lev",
-    "Orol",
-    "Sokol",
-  ]
-
-  const nouns = [
-    "Dom",
-    "Auto",
-    "Loď",
-    "Lietadlo",
-    "Počítač",
-    "Telefón",
-    "Kniha",
-    "Pero",
-    "Stôl",
-    "Stolička",
-    "Okno",
-    "Dvere",
-    "Strom",
-    "Kvet",
-    "Tráva",
-    "Kameň",
-    "Voda",
-    "Oheň",
-    "Vzduch",
-    "Zem",
-    "Slnko",
-    "Mesiac",
-    "Hviezda",
-    "Obloha",
-    "Spánok",
-    "Beh",
-    "Skok",
-    "Tanec",
-  ]
-
-  const adjectives2 = [
-    "Skrytý",
-    "Viditeľný",
-    "Tajný",
-    "Verejný",
-    "Tichý",
-    "Hlučný",
-    "Jasný",
-    "Tmavý",
-    "Vysoký",
-    "Nízky",
-    "Široký",
-    "Úzky",
-    "Plný",
-    "Prázdny",
-    "Ťažký",
-    "Ľahký",
-    "Mokrý",
-    "Suchý",
-    "Čistý",
-    "Špinavý",
-    "Horúci",
-    "Chladný",
-    "Sladký",
-    "Horký",
-  ]
-
-  // Pick random words
-  const adj1 = adjectives[Math.floor(Math.random() * adjectives.length)]
-  const noun = nouns[Math.floor(Math.random() * nouns.length)]
-  const adj2 = adjectives2[Math.floor(Math.random() * adjectives2.length)]
-
-  // Add a random number
-  const number = Math.floor(Math.random() * 10)
-
-  // Combine into a password
-  return `${adj1}-${noun}-${adj2}${number}`
-}
-
 // Handle form submission
 function handleFormSubmit(event, formData) {
-  // Only save credentials on successful form submission
-  // We'll use a timeout to allow the form to submit first
-  setTimeout(() => {
-    const usernameValue = formData.usernameField ? formData.usernameField.value : ""
-    const passwordValue = formData.passwordFields[0].value
+  log("Form submit detected")
 
-    if (usernameValue && passwordValue) {
-      // Determine if this is a new registration or a login
-      if (isRegistrationPage) {
-        // Save the new credentials
-        saveNewCredentials(usernameValue, passwordValue)
-      } else if (isLoginPage) {
-        // Update existing credentials if needed
-        updateCredentialsIfNeeded(usernameValue, passwordValue)
+  // Prevent default behavior for registration pages
+  if (event && event.preventDefault && state.isRegistrationPage) {
+    event.preventDefault()
+  }
+
+  // Get values from fields
+  const usernameValue = formData.usernameField ? formData.usernameField.value : ""
+  const passwordValue = formData.passwordFields[0].value
+
+  log("Form values:", {
+    username: usernameValue ? usernameValue.substring(0, 3) + "..." : "",
+    password: passwordValue ? "********" : "",
+  })
+
+  if (usernameValue && passwordValue) {
+    // Determine if this is a new registration or a login
+    if (state.isRegistrationPage) {
+      // Save the new credentials
+      saveNewCredentials(usernameValue, passwordValue)
+      log("Credentials saved for registration")
+
+      // If we prevented default, submit the form after saving
+      if (event && event.preventDefault && formData.form) {
+        setTimeout(() => {
+          formData.form.submit()
+        }, 500)
       }
+    } else if (state.isLoginPage) {
+      // Update existing credentials if needed
+      updateCredentialsIfNeeded(usernameValue, passwordValue)
     }
-  }, 500)
+  }
+}
+
+// Handle button click
+function handleButtonClickWrapper(e) {
+  // Find the nearest form
+  const form = e.currentTarget.closest("form")
+  if (form) {
+    const formData = state.formFields.find((f) => f.form === form)
+    if (formData) {
+      handleFormSubmit(e, formData)
+    }
+  }
 }
 
 // Save new credentials
 function saveNewCredentials(username, password) {
   // Get page title or domain as the site name
-  const siteName = document.title || currentDomain
+  const siteName = document.title || state.currentDomain
 
   // Prepare data
   const data = {
@@ -791,7 +1324,7 @@ function saveNewCredentials(username, password) {
     username: username,
     password: password,
     website: window.location.origin,
-    category: determineCategoryFromDomain(currentDomain),
+    category: determineCategoryFromDomain(state.currentDomain),
     favorite: false,
     folder: null,
     note: "",
@@ -799,13 +1332,13 @@ function saveNewCredentials(username, password) {
   }
 
   // Send message to background script to save the password
-  chrome.runtime.sendMessage(
+  browser.runtime.sendMessage(
     {
       action: "savePassword",
       data: data,
     },
     (response) => {
-      console.log("Password saved:", response.success)
+      log("Password saved:", response ? (response.success ? "success" : "failed") : "no response")
     },
   )
 }
@@ -813,13 +1346,13 @@ function saveNewCredentials(username, password) {
 // Update existing credentials if needed
 function updateCredentialsIfNeeded(username, password) {
   // Check if we already have credentials for this domain
-  chrome.runtime.sendMessage(
+  browser.runtime.sendMessage(
     {
       action: "getPasswordsForDomain",
-      domain: currentDomain,
+      domain: state.currentDomain,
     },
     (response) => {
-      if (response.success && response.passwords.length > 0) {
+      if (response && response.success && response.passwords && response.passwords.length > 0) {
         // Check if the username matches any existing entry
         const matchingEntry = response.passwords.find((p) => p.username === username)
 
@@ -830,13 +1363,16 @@ function updateCredentialsIfNeeded(username, password) {
             matchingEntry.password = password
             matchingEntry.dateModified = new Date().toISOString()
 
-            chrome.runtime.sendMessage(
+            browser.runtime.sendMessage(
               {
                 action: "updatePassword",
                 data: matchingEntry,
               },
               (updateResponse) => {
-                console.log("Password updated:", updateResponse.success)
+                log(
+                  "Password updated:",
+                  updateResponse ? (updateResponse.success ? "success" : "failed") : "no response",
+                )
               },
             )
           }
@@ -852,69 +1388,128 @@ function updateCredentialsIfNeeded(username, password) {
   )
 }
 
-// Upraviť funkciu checkSavedPasswords() pre lepšiu podporu Facebooku
-
+// Check if we have saved passwords for this domain
 function checkSavedPasswords() {
-  console.log("Checking saved passwords for domain:", currentDomain)
+  log("Checking saved passwords for domain:", state.currentDomain)
 
-  if (isLoginPage || (window.location.hostname.includes("facebook.com") && !isRegistrationPage)) {
-    chrome.runtime.sendMessage(
-      {
-        action: "getPasswordsForDomain",
-        domain: currentDomain,
-      },
-      (response) => {
-        console.log("Got response from background script:", response ? "success" : "error")
+  // Preskočiť, ak sme už ponúkli prihlasovacie údaje
+  if (state.credentialsOffered) {
+    log("Credentials already offered, skipping check")
+    return
+  }
 
-        if (response && response.success && response.passwords && response.passwords.length > 0) {
-          console.log("Found saved passwords:", response.passwords.length)
+  // Vždy skontrolovať uložené heslá na Facebook doménach alebo prihlasovacích stránkach
+  if (state.isLoginPage || isFacebookDomain()) {
+    // Pre Facebook použijeme špeciálnu logiku - skúsime nájsť heslá pre všetky Facebook domény
+    if (isFacebookDomain()) {
+      log("Facebook domain detected, checking all Facebook domains")
 
-          // Ak sme na Facebooku, použijeme špeciálnu logiku
-          if (window.location.hostname.includes("facebook.com")) {
+      // Najprv skúsime aktuálnu doménu
+      browser.runtime.sendMessage(
+        {
+          action: "getPasswordsForDomain",
+          domain: state.currentDomain,
+        },
+        (response) => {
+          if (response && response.success && response.passwords && response.passwords.length > 0) {
+            log("Found saved passwords for current domain:", response.passwords.length)
+            state.credentialsOffered = true
             handleFacebookSavedPasswords(response.passwords)
           } else {
-            // Štandardná logika pre ostatné stránky
+            // Ak nenájdeme heslá pre aktuálnu doménu, skúsime všetky Facebook domény
+            log("No passwords found for current domain, trying all Facebook domains")
+            browser.runtime.sendMessage(
+              {
+                action: "getPasswordsForDomain",
+                domain: "facebook.com",
+              },
+              (fbResponse) => {
+                if (fbResponse && fbResponse.success && fbResponse.passwords && fbResponse.passwords.length > 0) {
+                  log("Found saved passwords for facebook.com:", fbResponse.passwords.length)
+                  state.credentialsOffered = true
+                  handleFacebookSavedPasswords(fbResponse.passwords)
+                } else {
+                  log("No saved passwords found for any Facebook domain")
+                }
+              },
+            )
+          }
+        },
+      )
+    } else {
+      // Štandardná logika pre ostatné stránky
+      browser.runtime.sendMessage(
+        {
+          action: "getPasswordsForDomain",
+          domain: state.currentDomain,
+        },
+        (response) => {
+          log("Got response from background script:", response ? "success" : "error")
+
+          if (response && response.success && response.passwords && response.passwords.length > 0) {
+            log("Found saved passwords:", response.passwords.length)
+            state.credentialsOffered = true
+
             if (response.passwords.length === 1) {
-              // Only one password, offer to autofill
+              // Len jedno heslo, ponúkneme automatické vyplnenie
               offerAutofill(response.passwords[0])
             } else {
-              // Multiple passwords, offer to choose
+              // Viacero hesiel, ponúkneme výber
               offerPasswordSelection(response.passwords)
             }
+          } else {
+            log("No saved passwords found or error in response")
           }
-        } else {
-          console.log("No saved passwords found or error in response")
-        }
-      },
-    )
-  } else if (isRegistrationPage) {
+        },
+      )
+    }
+  } else if (state.isRegistrationPage) {
     // Pre registračnú stránku ponúkneme generovanie hesla
-    const passwordField = passwordFields[0]
-    if (passwordField) {
-      console.log("Registration page detected, offering password generation")
+    const passwordField = state.passwordFields[0]
+    if (passwordField && !passwordField.value && !state.passwordSuggestionShown) {
+      log("Registration page detected, offering password generation")
       showPasswordSuggestion(passwordField)
     }
   }
 }
 
-// Špeciálna funkcia pre prácu s uloženými heslami na Facebooku
+// Handle saved passwords for Facebook
 function handleFacebookSavedPasswords(passwords) {
-  console.log("Handling Facebook saved passwords")
+  log("Handling Facebook saved passwords")
 
-  // Nájdeme formulárové prvky
-  const emailInput = document.querySelector('input[name="email"], input[id="email"]')
-  const passwordInput = document.querySelector('input[name="pass"], input[id="pass"]')
+  // Nájdeme formulárové prvky - špeciálna podpora pre login.php
+  let emailInput = null
+  let passwordInput = null
+
+  if (window.location.href.includes("login.php")) {
+    // Špecifické selektory pre login.php
+    emailInput = document.querySelector('input.inputtext._55r1.inputtext._1kbt.inputtext._1kbt[name="email"]')
+    passwordInput = document.querySelector('input.inputtext._55r1.inputtext._9npi.inputtext._9npi[name="pass"]')
+  }
+
+  // Ak nenájdeme špecifické polia, skúsime štandardné selektory
+  if (!emailInput) {
+    emailInput = document.querySelector(
+      'input[name="email"], input[id="email"], input[data-testid="royal_email"], input[placeholder="Email or phone number"], input[placeholder="E-mail alebo telefónne číslo"]',
+    )
+  }
+
+  if (!passwordInput) {
+    passwordInput = document.querySelector(
+      'input[name="pass"], input[id="pass"], input[data-testid="royal_pass"], input[placeholder="Password"], input[placeholder="Heslo"]',
+    )
+  }
 
   if (!emailInput || !passwordInput) {
-    console.log("Could not find Facebook login form elements")
+    log("Could not find Facebook login form elements")
     return
   }
 
-  // Ak už je email vyplnený, skúsime nájsť zodpovedajúce heslo
+  // Ak je email už vyplnený, skúsime nájsť zodpovedajúce heslo
   if (emailInput.value && emailInput.value.length > 0) {
     const matchingPassword = passwords.find((p) => p.username === emailInput.value)
     if (matchingPassword) {
-      console.log("Found matching password for email:", emailInput.value)
+      log("Found matching password for email")
       offerAutofill(matchingPassword)
       return
     }
@@ -928,43 +1523,28 @@ function handleFacebookSavedPasswords(passwords) {
   }
 }
 
-// Check if we have saved passwords for this domain
-//function checkSavedPasswords() {
-//  if (isLoginPage || window.location.hostname.includes("facebook.com")) {
-//    console.log("Checking saved passwords for domain:", currentDomain)
-//    chrome.runtime.sendMessage(
-//      {
-//        action: "getPasswordsForDomain",
-//        domain: currentDomain,
-//      },
-//      (response) => {
-//        if (response && response.success && response.passwords && response.passwords.length > 0) {
-//          // We have saved passwords for this domain
-//          console.log("Found saved passwords:", response.passwords.length)
-//          if (response.passwords.length === 1) {
-//            // Only one password, offer to autofill
-//            offerAutofill(response.passwords[0])
-//          } else {
-//            // Multiple passwords, offer to choose
-//            offerPasswordSelection(response.passwords)
-//          }
-//        } else {
-//          console.log("No saved passwords found or error in response", response)
-//        }
-//      },
-//    )
-//  }
-//}
-
 // Offer to autofill a single saved password
 function offerAutofill(passwordData) {
-  // Find the form to fill
-  const formData = formFields[0] // Use the first form with password field
+  // Nájdeme formulár na vyplnenie
+  const formData = state.formFields[0] // Použijeme prvý formulár s poľom pre heslo
 
   if (formData) {
-    // Create autofill suggestion UI
+    // Vytvoríme UI pre návrh automatického vyplnenia
     const suggestionElement = document.createElement("div")
     suggestionElement.className = "password-suggestion"
+
+    // Špeciálny štýl pre Facebook
+    if (isFacebookDomain()) {
+      suggestionElement.style.zIndex = "9999999"
+      suggestionElement.style.backgroundColor = "#fff"
+      suggestionElement.style.border = "1px solid #dddfe2"
+      suggestionElement.style.borderRadius = "3px"
+      suggestionElement.style.boxShadow = "0 2px 4px rgba(0, 0, 0, 0.1)"
+      suggestionElement.style.padding = "10px"
+      suggestionElement.style.maxWidth = "300px"
+      suggestionElement.style.fontFamily = "Helvetica, Arial, sans-serif"
+    }
+
     suggestionElement.innerHTML = `
       <div class="password-suggestion-content">
         <p>Chceš sa prihlásiť ako ${passwordData.username}?</p>
@@ -975,7 +1555,7 @@ function offerAutofill(passwordData) {
       </div>
     `
 
-    // Position the suggestion near the username field
+    // Umiestnime návrh blízko poľa pre používateľské meno
     const fieldRect = formData.usernameField
       ? formData.usernameField.getBoundingClientRect()
       : formData.passwordFields[0].getBoundingClientRect()
@@ -984,33 +1564,50 @@ function offerAutofill(passwordData) {
     suggestionElement.style.left = `${fieldRect.left}px`
     suggestionElement.style.top = `${fieldRect.bottom + window.scrollY + 5}px`
 
-    // Add to the page
+    // Pridáme na stránku
     document.body.appendChild(suggestionElement)
 
-    // Add event listener to the "Use" button
+    // Pridáme event listener na tlačidlo "Použiť"
     const useButton = suggestionElement.querySelector(".password-suggestion-btn")
     useButton.addEventListener("click", () => {
-      // Fill the form
+      // Vyplníme formulár
       if (formData.usernameField) {
         formData.usernameField.value = passwordData.username
+        formData.usernameField.dispatchEvent(new Event("input", { bubbles: true }))
       }
 
       formData.passwordFields.forEach((field) => {
         field.value = passwordData.password
+        field.dispatchEvent(new Event("input", { bubbles: true }))
       })
 
-      // Remove the suggestion UI
+      // Odstránime UI návrhu
       document.body.removeChild(suggestionElement)
+
+      // Pre login.php stránku môžeme skúsiť aj automatické odoslanie formulára
+      if (window.location.href.includes("login.php")) {
+        const loginButton = document.querySelector(
+          'button[id="loginbutton"], button[name="login"], button[type="submit"]',
+        )
+        if (loginButton) {
+          setTimeout(() => {
+            loginButton.click()
+          }, 500)
+        }
+      }
     })
 
-    // Remove the suggestion when clicking outside
+    // Odstránime návrh pri kliknutí mimo
     document.addEventListener("click", function removeSuggestion(e) {
       if (
         !suggestionElement.contains(e.target) &&
         e.target !== formData.usernameField &&
         !formData.passwordFields.includes(e.target)
       ) {
-        document.body.removeChild(suggestionElement)
+        // Skontrolujeme, či element ešte existuje v DOM
+        if (suggestionElement.parentNode) {
+          document.body.removeChild(suggestionElement)
+        }
         document.removeEventListener("click", removeSuggestion)
       }
     })
@@ -1020,12 +1617,24 @@ function offerAutofill(passwordData) {
 // Offer to select from multiple saved passwords
 function offerPasswordSelection(passwords) {
   // Find the form to fill
-  const formData = formFields[0] // Use the first form with password field
+  const formData = state.formFields[0] // Use the first form with password field
 
   if (formData) {
     // Create password selection UI
     const selectionElement = document.createElement("div")
     selectionElement.className = "password-selection"
+
+    // Special styling for Facebook
+    if (isFacebookDomain()) {
+      selectionElement.style.zIndex = "9999"
+      selectionElement.style.backgroundColor = "#fff"
+      selectionElement.style.border = "1px solid #dddfe2"
+      selectionElement.style.borderRadius = "8px"
+      selectionElement.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.15)"
+      selectionElement.style.padding = "16px"
+      selectionElement.style.maxWidth = "400px"
+      selectionElement.style.fontFamily = "Helvetica, Arial, sans-serif"
+    }
 
     let selectionHTML = `
       <div class="password-selection-header">
@@ -1093,10 +1702,12 @@ function offerPasswordSelection(passwords) {
         // Fill the form
         if (formData.usernameField) {
           formData.usernameField.value = username
+          formData.usernameField.dispatchEvent(new Event("input", { bubbles: true }))
         }
 
         formData.passwordFields.forEach((field) => {
           field.value = password
+          formData.passwordFields.dispatchEvent(new Event("input", { bubbles: true }))
         })
 
         // Remove the selection UI and backdrop
@@ -1169,4 +1780,9 @@ function determineCategoryFromDomain(domain) {
   }
 
   return "other"
+}
+
+// Upraviť funkciu isFacebookDomain() aby lepšie rozpoznala všetky Facebook domény
+function isFacebookDomain() {
+  return state.currentDomain.includes("facebook.com") || state.currentDomain.includes("fb.com")
 }

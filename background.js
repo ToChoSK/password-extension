@@ -29,15 +29,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 })
 
-// Get passwords for a specific domain
+// Upraviť funkciu getPasswordsForDomain() pre lepšiu podporu Facebook domén
 async function getPasswordsForDomain(domain) {
   return new Promise((resolve) => {
     chrome.storage.local.get("passwords", (result) => {
       const allPasswords = result.passwords || []
+      console.log("All passwords:", allPasswords.length)
+
+      // Špeciálna logika pre Facebook domény
+      const isFacebook = domain.includes("facebook.com") || domain.includes("fb.com")
+
       const matchingPasswords = allPasswords.filter((p) => {
         const passwordDomain = extractDomain(p.website)
+
+        // Pre Facebook vrátime všetky Facebook heslá bez ohľadu na subdoménu
+        if (isFacebook && (passwordDomain.includes("facebook.com") || passwordDomain.includes("fb.com"))) {
+          return true
+        }
+
         return passwordDomain === domain
       })
+
+      console.log("Matching passwords for domain", domain, ":", matchingPasswords.length)
       resolve(matchingPasswords)
     })
   })
@@ -67,7 +80,7 @@ async function savePassword(data) {
   })
 }
 
-// Helper function to extract domain from URL
+// Upraviť funkciu extractDomain() pre lepšiu normalizáciu Facebook domén
 function extractDomain(url) {
   let domain = url
   if (url.includes("://")) {
@@ -76,5 +89,21 @@ function extractDomain(url) {
   if (domain.includes("/")) {
     domain = domain.split("/")[0]
   }
+
+  // Normalizácia Facebook domén
+  if (domain.includes("facebook.com") || domain.includes("fb.com")) {
+    // Normalizujeme všetky Facebook subdomény na facebook.com
+    const parts = domain.split(".")
+    const len = parts.length
+
+    if (len >= 3 && parts[len - 2] === "facebook" && parts[len - 1] === "com") {
+      return "facebook.com"
+    }
+
+    if (domain.includes("fb.com")) {
+      return "facebook.com" // Normalizujeme fb.com na facebook.com
+    }
+  }
+
   return domain
 }
