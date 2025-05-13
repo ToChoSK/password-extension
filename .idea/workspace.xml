@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="60ab5fe5-5fb5-47c9-9a40-fdaa8da2ec47" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/background.js" beforeDir="false" afterPath="$PROJECT_DIR$/background.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/content.js" beforeDir="false" afterPath="$PROJECT_DIR$/content.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/icons/icon128.png" beforeDir="false" afterPath="$PROJECT_DIR$/icons/icon128.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/icons/icon16.png" beforeDir="false" afterPath="$PROJECT_DIR$/icons/icon16.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/icons/icon48.png" beforeDir="false" afterPath="$PROJECT_DIR$/icons/icon48.png" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/popup.js" beforeDir="false" afterPath="$PROJECT_DIR$/popup.js" afterDir="false" />
+    <list default="true" id="60ab5fe5-5fb5-47c9-9a40-fdaa8da2ec47" name="Changes" comment="New design">
+      <change beforePath="$PROJECT_DIR$/content.css" beforeDir="false" afterPath="$PROJECT_DIR$/content.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/styles.css" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -21,21 +16,21 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "ToChoSK"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;ToChoSK&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "git@github.com:ToChoSK/password-extension.git",
-    "accountId": "af8785e6-8233-4df6-93ad-05f63611608d"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:ToChoSK/password-extension.git&quot;,
+    &quot;accountId&quot;: &quot;af8785e6-8233-4df6-93ad-05f63611608d&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 1
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1
+}</component>
   <component name="ProjectId" id="2wgQMGbowxdEsryfbSSXAVPtdIV" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -44,7 +39,9 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true",
     "last_opened_file_path": "C:/Users/ToCho/Desktop/Pracička/TouchThePhone",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -77,10 +74,24 @@
       <option name="presentableId" value="Default" />
       <updated>1746460688357</updated>
       <workItem from="1746460690997" duration="1928000" />
+      <workItem from="1747128622474" duration="299000" />
     </task>
+    <task id="LOCAL-00001" summary="New design">
+      <option name="closed" value="true" />
+      <created>1747128914506</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1747128914506</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="New design" />
+    <option name="LAST_COMMIT_MESSAGE" value="New design" />
   </component>
 </project>

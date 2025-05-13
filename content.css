@@ -1,28 +1,100 @@
+/* Define CSS Variables */
+:root {
+  --primary-background-color: #f0f2f5;
+  --secondary-background-color: #e4e6e9;
+  --secondary-background-hover-color: #d8dadf;
+  --primary-text-color: #1c1e21;
+  --secondary-text-color: #65676b;
+  --accent-color: #2F9D61;
+  --accent-color-hover: #2F9D61;
+  --white-color: #ffffff;
+  --black-color-alpha: rgba(0, 0, 0, 0.1);
+  --black-color-alpha-strong: rgba(0, 0, 0, 0.8);
+  --body-background-color: #e8f5e9; /* Light green like in the image */
+
+  --font-family-system: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --font-size-small: 12px;
+  --font-size-default: 14px;
+  --font-size-large: 18px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --border-radius-small: 4px;
+  --border-radius-medium: 6px;
+  --border-radius-large: 8px;
+  --border-radius-xlarge: 12px;
+
+  --spacing-xxsmall: 4px;
+  --spacing-xsmall: 8px;
+  --spacing-small: 10px;
+  --spacing-medium: 12px;
+  --spacing-large: 16px;
+  --spacing-xlarge: 20px;
+
+  --box-shadow-default: 0 2px 10px var(--black-color-alpha);
+
+  --z-index-high: 10000;
+  --z-index-critical: 9999999; /* For overriding */
+
+  --animation-duration: 0.2s;
+  --animation-timing-function: ease-in-out;
+  --transition-duration: 0.2s;
+  --transition-duration-toast: 0.3s;
+  --transition-timing-function-toast: ease-out;
+}
+
+/* General body styles */
+body {
+  font-family: var(--font-family-system), serif;
+  background-color: var(--body-background-color);
+  color: var(--primary-text-color); /* Set a default text color for the body */
+  margin: 0; /* Remove default browser margin */
+  padding: 0; /* Remove default browser padding */
+  /* You might want to add more global styles here, e.g., for the app container */
+}
+
+.app-container {
+    /* If your app-container should have a different background (e.g., white)
+       you can set it here. Otherwise, it will inherit the body's green.
+       For example, to make the app container white as is common:
+       background-color: var(--white-color);
+       margin: var(--spacing-large) auto;
+       padding: var(--spacing-large);
+       border-radius: var(--border-radius-large);
+       box-shadow: var(--box-shadow-default);
+       max-width: 400px; /* Example max-width for a mobile-like view */
+    /* Adjust the app-container styling as needed for your design */
+}
+
+
 /* Password suggestion styles */
 .password-suggestion {
   position: absolute;
-  background-color: #f0f2f5;
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background-color: var(--primary-background-color); /* This is a light grey, might contrast well or you might want to adjust */
+  border-radius: var(--border-radius-xlarge);
+  padding: var(--spacing-medium);
+  box-shadow: var(--box-shadow-default);
   max-width: 280px;
-  z-index: 10000;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1c1e21;
-  animation: fadeIn 0.2s ease-in-out;
+  z-index: var(--z-index-high);
+  /* font-family is inherited from body */
+  color: var(--primary-text-color);
+  animation: fadeIn var(--animation-duration) var(--animation-timing-function);
 }
 
 /* Increase z-index to ensure our elements appear above Facebook's UI */
 .password-suggestion,
 .password-selection,
 .password-selection-backdrop {
-  z-index: 9999999 !important;
+  z-index: var(--z-index-critical) !important;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(var(--spacing-small));
   }
   to {
     opacity: 1;
@@ -31,12 +103,12 @@
 }
 
 .password-suggestion-content {
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-xsmall);
 }
 
 .password-suggestion-content p {
-  margin: 0 0 4px 0;
-  font-size: 14px;
+  margin: 0 0 var(--spacing-xxsmall) 0;
+  font-size: var(--font-size-default);
   line-height: 1.4;
 }
 
@@ -46,56 +118,61 @@
 }
 
 .password-suggestion-btn {
-  padding: 8px 16px;
+  padding: var(--spacing-xsmall) var(--spacing-large);
   border: none;
-  border-radius: 6px;
-  background-color: #1877f2;
-  color: white;
-  font-weight: 500;
+  border-radius: var(--border-radius-medium);
+  background-color: var(--accent-color);
+  color: var(--white-color);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
+  font-size: var(--font-size-default);
+  transition: background-color var(--transition-duration);
 }
 
 .password-suggestion-btn:hover {
-  background-color: #166fe5;
+  background-color: var(--accent-color-hover);
 }
 
 /* Password selection styles */
 .password-selection-header {
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-large);
 }
 
 .password-selection-header h3 {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: var(--font-size-large);
+  font-weight: var(--font-weight-semibold);
   margin: 0;
 }
 
 .password-selection-list {
   max-height: 300px;
   overflow-y: auto;
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-large);
 }
 
 .password-selection-item {
   display: flex;
   align-items: center;
-  padding: 12px;
-  border-radius: 8px;
+  padding: var(--spacing-medium);
+  border-radius: var(--border-radius-large);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color var(--transition-duration);
+  /* If items should have a different background than the body, define it here.
+     For example, if they should be on a white card on the green background:
+     background-color: var(--white-color);
+     margin-bottom: var(--spacing-xsmall);
+  */
 }
 
 .password-selection-item:hover {
-  background-color: #f0f2f5;
+  background-color: var(--primary-background-color); /* This is a light grey, adjust if needed */
 }
 
 .password-selection-item .site-logo {
   width: 32px;
   height: 32px;
-  margin-right: 12px;
-  border-radius: 4px;
+  margin-right: var(--spacing-medium);
+  border-radius: var(--border-radius-small);
 }
 
 .selection-info {
@@ -103,13 +180,13 @@
 }
 
 .selection-username {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-default);
+  font-weight: var(--font-weight-medium);
 }
 
 .selection-site {
-  font-size: 12px;
-  color: #65676b;
+  font-size: var(--font-size-small);
+  color: var(--secondary-text-color);
 }
 
 .password-selection-footer {
@@ -118,34 +195,34 @@
 }
 
 .password-selection-cancel {
-  padding: 8px 16px;
+  padding: var(--spacing-xsmall) var(--spacing-large);
   border: none;
-  border-radius: 6px;
-  background-color: #e4e6e9;
-  color: #1c1e21;
-  font-weight: 500;
+  border-radius: var(--border-radius-medium);
+  background-color: var(--secondary-background-color); /* Light grey */
+  color: var(--primary-text-color);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
+  font-size: var(--font-size-default);
+  transition: background-color var(--transition-duration);
 }
 
 .password-selection-cancel:hover {
-  background-color: #d8dadf;
+  background-color: var(--secondary-background-hover-color); /* Darker grey */
 }
 
 /* Toast notification */
 .toast {
   position: fixed;
-  bottom: 20px;
+  bottom: var(--spacing-xlarge);
   left: 50%;
   transform: translateX(-50%) translateY(100px);
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 10px 20px;
-  border-radius: 4px;
-  font-size: 14px;
-  z-index: 10000;
-  transition: transform 0.3s ease-out;
+  background-color: var(--black-color-alpha-strong);
+  color: var(--white-color);
+  padding: var(--spacing-small) var(--spacing-xlarge);
+  border-radius: var(--border-radius-small);
+  font-size: var(--font-size-default);
+  z-index: var(--z-index-high);
+  transition: transform var(--transition-duration-toast) var(--transition-timing-function-toast);
 }
 
 .toast.show {
